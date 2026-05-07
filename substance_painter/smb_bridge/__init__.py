@@ -1,0 +1,1 @@
+from .pipeline import start_plugin, close_plugin
