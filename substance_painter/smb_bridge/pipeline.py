@@ -158,17 +158,20 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
         setup_baking(texture_sets, high_path)
 
         def do_export_and_continue():
-            # Runs after the bake is finished (called from on_bake_end below)
-
             if color_mapping:
-                # color_mapping = {"#FF0000": "Metal_Rusty", "#00FF00": "Fabric_Cotton"}
-                # Reads the baked ID map and assigns smart materials per color region
                 apply_smart_materials(texture_sets, color_mapping)
 
+                # Wait 3 seconds after applying smart materials before exporting
+                # SP needs time to compute the inserted layers and masks
+                # exporting immediately after insert gives grey/empty textures
+                from PySide6.QtCore import QTimer
+                QTimer.singleShot(3000, lambda: sp_project.execute_when_not_busy(_do_export))
+            else:
+                # No smart materials to apply, safe to export immediately
+                sp_project.execute_when_not_busy(_do_export)
+
+        def _do_export():
             if texture_out:
-                # texture_out = "C:\Users\eline\MyBakeFolder\chair\textures"
-                # Exports BaseColor, Roughness, Metallic, Normal etc. as PNGs
-                # Also saves the .spp project file if projects_folder is set
                 try:
                     export_textures(
                         texture_sets, texture_out, projects_folder,
@@ -180,22 +183,17 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
                     print(f"[SP] Export failed for '{name}': {e}")
                     print("[SP] Continuing despite export error...")
             else:
-                # texture_out is "" — user only wanted the .spp project, not textures
                 print("[SP] No texture_out set - skipping texture export.")
                 if projects_folder:
                     try:
                         os.makedirs(projects_folder, exist_ok=True)
-                        # spp_path = "C:\Users\eline\MyBakeFolder\chair\projects\Chair.spp"
                         spp_path = os.path.join(projects_folder, f"{name}.spp")
                         sp_project.save_as(spp_path)
                         print(f"[SP] Project saved: {spp_path}")
                     except Exception as e:
                         print(f"[SP] Could not save project: {e}")
 
-            # Delete or keep the fbx/ folder depending on user's Export FBX setting
             cleanup_files(working_dir, delete_fbx_after)
-
-            # Move on to the next pair, or close SP if this was the last one
             finish_or_continue(
                 pairs, working_dir, index,
                 lambda p, w, i: process_next(
