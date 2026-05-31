@@ -1,6 +1,6 @@
 # Smart Material Bridge
 
-A Blender add-on that automates the full pipeline from mesh baking to final textured asset, bridging Blender and Adobe Substance 3D Painter in a single click. Handy to simply apply smart materials to your blender meshes. Afterwards you can adjust in Substance Painter with the baking and applying already done. 
+A Blender add-on that automates the full pipeline from mesh baking to final textured asset, bridging Blender and Adobe Substance 3D Painter in a single click. Handy to apply smart materials to your blender meshes. Afterwards you can adjust in Substance Painter with the baking and applying already done. 
 
 ## Requirements
 
