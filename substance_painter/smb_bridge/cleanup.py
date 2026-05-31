@@ -1,20 +1,12 @@
 import os
-import substance_painter.smb_bridge.project as sp_project
-import substance_painter.application as sp_app
+import shutil
 
-def cleanup_files(low_path, high_path, name):
-    for path in [low_path, high_path]:
-        try:
-            os.remove(path)
-            print(f"[SP] Removed: {path}")
-        except Exception as e:
-            print(f"[SP] Cleanup warning: {e}")
-
-def finish_or_continue(pairs, working_dir, index, process_next_fn):
-    if index + 1 >= len(pairs):
-        print("[SP] All done, closing Substance Painter...")
-        sp_project.execute_when_not_busy(sp_app.close)
+def cleanup_files(fbx_folder, delete_fbx_after):
+    """FBX files are kept as permanent copies in fbx/ — nothing to clean up."""
+    if delete_fbx_after:
+        if os.path.isdir(fbx_folder):
+            shutil.rmtree(fbx_folder)
+            print(f"[SP] Deleted FBX folder (not requested by user): {fbx_folder}")
     else:
-        sp_project.execute_when_not_busy(
-            lambda: process_next_fn(pairs, working_dir, index + 1)
-        )
+        print(f"[SP] FBX files retained in: {fbx_folder}")
+

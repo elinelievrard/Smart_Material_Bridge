@@ -1,12 +1,14 @@
 import shutil
 import os
+from .config import SP_STARTUP
 
-def get_sp_startup_path():
-    # Default SP install path, adjust if needed
-    return r"C:\Program Files\Adobe\Adobe Substance 3D Painter\resources\python\startup"
 
 def install_sp_files():
-    sp_startup = get_sp_startup_path()
+    if not SP_STARTUP:
+        print("[SMB] SP not found, skipping")
+        return
+
+    sp_startup = SP_STARTUP
 
     if not os.path.exists(sp_startup):
         print("[SMB] Substance Painter not found, skipping SP install")
@@ -33,7 +35,11 @@ def install_sp_files():
     print("[SMB] Substance Painter files installed!")
 
 def uninstall_sp_files():
-    sp_startup = get_sp_startup_path()
+    if not SP_STARTUP:
+        print("[SMB] SP not found, skipping")
+        return
+
+    sp_startup = SP_STARTUP
     try:
         entry = os.path.join(sp_startup, "smb_bridge_startup.py")
         pkg = os.path.join(sp_startup, "smb_bridge")

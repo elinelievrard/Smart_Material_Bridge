@@ -1,6 +1,4 @@
-import sys
-
-import subprocess
+import os
 
 bl_info = {
     "name": "Smart Material Bridge",
@@ -9,37 +7,119 @@ bl_info = {
 }
 
 import bpy
-# very important to put the . because pycharm will know but blender does not
 try:
-    from .interface.ui import OBJECT_PT_bake_panel
-    from .startup.restart_blender import SMB_OT_restart_blender
+    from .interface.ui import OBJECT_PT_bake_panel, RESOLUTION_ITEMS
     from .interface.classes.bake_preview import OBJECT_OT_bake_preview
     from .interface.classes.bake_watcher import OBJECT_OT_bake_watcher
-    from .handle_sp_files import install_sp_files, uninstall_sp_files
+    from .interface.classes.refresh_overwrite_folder import SMB_OT_refresh_overwrite_folder
+    from .interface.functions.get_smart_materials import get_export_preset_items, get_smart_material_items
+    from .interface.vertex_colors import (
+        SMB_VertexColorItem,
+        OBJECT_OT_detect_vertex_colors,
+        SMB_OT_show_vertex_colors,
+        SMB_OT_clear_vertex_color_materials,
+    )
+
 except Exception as e:
     import traceback
     traceback.print_exc()
     raise
 
 classes = [
+    SMB_VertexColorItem,
     OBJECT_PT_bake_panel,
-    SMB_OT_restart_blender,
     OBJECT_OT_bake_preview,
     OBJECT_OT_bake_watcher,
+    OBJECT_OT_detect_vertex_colors,
+    SMB_OT_refresh_overwrite_folder,
+    SMB_OT_show_vertex_colors,
+    SMB_OT_clear_vertex_color_materials,
 ]
-
-addon_keymaps = []
 
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    install_sp_files()
+    bpy.types.Scene.bake_base_folder = bpy.props.StringProperty(
+        name="Bake Folder",
+        default=os.path.join(os.path.expanduser("~"), "MyBakeFolder"),
+        subtype='DIR_PATH'
+    )
+    bpy.types.Scene.smb_resolution = bpy.props.EnumProperty(
+        name="Resolution",
+        items=RESOLUTION_ITEMS,
+        default='2048'
+    )
+    bpy.types.Scene.smb_vertex_colors = bpy.props.CollectionProperty(
+        type=SMB_VertexColorItem
+    )
+    bpy.types.Scene.smb_status = bpy.props.StringProperty(
+        name="SMB Status",
+        default=""
+    )
+    bpy.types.Scene.smb_export_fbx = bpy.props.BoolProperty(
+        name="Export FBX",
+        default=True
+    )
+    bpy.types.Scene.smb_export_project = bpy.props.BoolProperty(
+        name="Export SP Project",
+        default=True
+    )
+    bpy.types.Scene.smb_export_textures = bpy.props.BoolProperty(
+        name="Export Textures",
+        default=True
+    )
+    bpy.types.Scene.smb_overwrite_bake = bpy.props.BoolProperty(
+        name="Overwrite Bake Folder",
+        default=False
+    )
+    bpy.types.Scene.smb_overwrite_folder = bpy.props.StringProperty(
+        name="Overwrite Folder",
+        default="",
+        subtype='DIR_PATH'
+    )
+    bpy.types.Scene.smb_export_preset = bpy.props.EnumProperty(
+        name="Export Preset",
+        items=get_export_preset_items,
+    )
+    bpy.types.Scene.smb_bake_folder_name = bpy.props.StringProperty(
+        name="Bake Name",
+        default=""
+    )
+    bpy.types.Scene.smb_use_vertex_colors = bpy.props.BoolProperty(
+        name="Use Vertex Colors",
+        description="Assign different smart materials per vertex color. Disable to apply one material to the whole mesh",
+        default=True
+    )
+    bpy.types.Scene.smb_single_smart_material = bpy.props.EnumProperty(
+        name="Smart Material",
+        items=get_smart_material_items,
+    )
+    bpy.types.Scene.smb_use_low_as_high = bpy.props.BoolProperty(
+        name="Use Low as High",
+        description="Use the low poly mesh as its own high poly — no _high mesh needed",
+        default=False
+    )
+    bpy.types.Scene.smb_last_baked_material = bpy.props.StringProperty(
+        name="Last Baked Material",
+        default=""
+    )
 
 def unregister():
-    # Remove keymap
-
     for cls in classes:
         bpy.utils.unregister_class(cls)
-
-    uninstall_sp_files()
+    del bpy.types.Scene.smb_status
+    del bpy.types.Scene.smb_export_fbx
+    del bpy.types.Scene.smb_export_project
+    del bpy.types.Scene.smb_export_textures
+    del bpy.types.Scene.smb_overwrite_bake
+    del bpy.types.Scene.smb_overwrite_folder
+    del bpy.types.Scene.smb_export_preset
+    del bpy.types.Scene.smb_bake_folder_name
+    del bpy.types.Scene.smb_use_vertex_colors
+    del bpy.types.Scene.smb_single_smart_material
+    del bpy.types.Scene.smb_use_low_as_high
+    del bpy.types.Scene.bake_base_folder
+    del bpy.types.Scene.smb_resolution
+    del bpy.types.Scene.smb_vertex_colors
+    del bpy.types.Scene.smb_last_baked_material

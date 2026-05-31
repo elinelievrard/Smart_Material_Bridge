@@ -1,9 +1,10 @@
 import subprocess
 
-# 🔹 Launch Substance Painter non-blocking
-def launch_substance_painter(sp_path=r"C:\Program Files\Adobe\Adobe Substance 3D Painter\Adobe Substance 3D Painter.exe"):
+def launch_substance_painter(sp_path):
     try:
-        subprocess.Popen([sp_path])
-        print(f"Substance Painter launched: {sp_path}")
+        process = subprocess.Popen([sp_path])
+        print(f"[SMB] Substance Painter launched: {sp_path}")
+        return process
     except Exception as e:
-        print(f"Error launching Substance Painter: {e}")
+        print(f"[SMB] Error launching Substance Painter: {e}")
+        return None
