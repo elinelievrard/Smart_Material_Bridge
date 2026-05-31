@@ -2,6 +2,11 @@ import bpy
 import os
 
 def find_mesh_pairs(use_low_as_high=False):
+    # [
+    #     (Cube_low, Cube_high),
+    #     (Chair_low, Chair_high),
+    # ]
+
     pairs = []
     for obj in bpy.data.objects:
         if obj.type != 'MESH':
@@ -25,6 +30,7 @@ def export_pair(low_obj, high_obj, fbx_folder):
     # Store and force visibility so hidden objects export correctly
     low_hide_viewport = low_obj.hide_viewport
     low_hide_render = low_obj.hide_render
+    # more broad visibility check
     low_hide_get = low_obj.hide_get()
     low_obj.hide_viewport = False
     low_obj.hide_render = False

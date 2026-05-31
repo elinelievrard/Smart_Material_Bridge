@@ -8,6 +8,11 @@ def clear_materials(obj):
     obj.data.materials.clear()
 
 def get_unique_vertex_colors(obj, color_layer_name=None, precision=3):
+    # {
+    #     (1.0, 0.0, 0.0),
+    #     (0.0, 1.0, 0.0),
+    #     (0.2, 0.2, 0.2)
+    # }
     mesh = obj.data
 
     # Find color attribute explicitly instead of using .active
