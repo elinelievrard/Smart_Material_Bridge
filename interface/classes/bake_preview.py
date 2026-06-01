@@ -284,6 +284,18 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
             self.report({'ERROR'}, f"'{obj.name}' was not matched — check scene for a corresponding _high mesh")
             return {'CANCELLED'}
 
+        # Validate vertex colors match if enabled
+        if scene.smb_use_vertex_colors and len(scene.smb_vertex_colors) > 0:
+            from ..vertex_colors import get_unique_vertex_colors
+            mesh_colors = get_unique_vertex_colors(obj)
+            detected_colors = {
+                tuple(round(item.color[i], 3) for i in range(3))
+                for item in scene.smb_vertex_colors
+            }
+            if mesh_colors != detected_colors:
+                self.report({'ERROR'}, "Vertex colors don't match this mesh — run 'Detect Vertex Colors' again")
+                return {'CANCELLED'}
+
         # Filter down to just the selected object's pair
         # e.g. obj.name = "Chair_low"
         # pairs = [(<Object "Chair_low">, <Object "Chair_high">)]

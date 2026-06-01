@@ -20,7 +20,6 @@ RESOLUTION_TO_LOG2 = {
     '8192': 13,
 }
 
-
 class OBJECT_PT_bake_panel(bpy.types.Panel):
     # UI panel that appears in the 3D viewport's "SMB" tab
     bl_label = "Smart Material Bridge"
@@ -202,7 +201,7 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
             # ─────────────────────────────────────────────────────────────────
             # If vertex colors are enabled, check they actually match the selected mesh
             if scene.smb_use_vertex_colors and len(scene.smb_vertex_colors) > 0:
-                from .functions.get_smart_materials import get_unique_vertex_colors
+                from .vertex_colors import get_unique_vertex_colors
 
                 # Get colors from the currently selected mesh
                 mesh_colors = get_unique_vertex_colors(obj)
@@ -217,12 +216,10 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
                 if mesh_colors != detected_colors:
                     row = layout.row()
                     row.alert = True
-                    row.label(text="Detected colors don't match this mesh!", icon='ERROR')
+
                     row = layout.row()
                     row.alert = True
-                    row.label(text="Run 'Detect Vertex Colors' again.", icon='ERROR')
 
-                    # Prevent baking with stale color data
                     can_bake = False
                     bake_error = "Vertex colors don't match — re-detect them."
 
