@@ -216,9 +216,10 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
                 if mesh_colors != detected_colors:
                     row = layout.row()
                     row.alert = True
-
+                    row.label(text="Detected colors don't match this mesh!", icon='ERROR')
                     row = layout.row()
                     row.alert = True
+                    row.label(text="Run 'Detect Vertex Colors' again.", icon='ERROR')
 
                     can_bake = False
                     bake_error = "Vertex colors don't match — re-detect them."
