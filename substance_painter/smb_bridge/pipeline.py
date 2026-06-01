@@ -111,11 +111,13 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
         setup_baking(texture_sets, high_path)
 
         def _do_export():
-            # Re-fetch texture sets fresh — the captured list from after_project_ready
-            # can become stale if SP unloads or reloads anything between baking and export
+            if not sp_project.is_open():
+                print("[SP] Project no longer open at export time — aborting")
+                return
+
             current_texture_sets = sp_textureset.all_texture_sets()
             if not current_texture_sets:
-                print("[SP] No texture sets found at export time — project may have unloaded")
+                print("[SP] No texture sets at export time — aborting")
                 return
 
             if texture_out:
@@ -128,15 +130,13 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
                     import traceback
                     traceback.print_exc()
                     print(f"[SP] Export failed for '{name}': {e}")
-                    print("[SP] Continuing despite export error...")
+
             else:
-                print("[SP] No texture_out set - skipping texture export.")
                 if projects_folder:
                     try:
                         os.makedirs(projects_folder, exist_ok=True)
                         spp_path = os.path.join(projects_folder, f"{name}.spp")
                         sp_project.save_as(spp_path)
-                        print(f"[SP] Project saved: {spp_path}")
                     except Exception as e:
                         print(f"[SP] Could not save project: {e}")
 
@@ -156,21 +156,11 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
             if color_mapping:
                 apply_smart_materials(texture_sets, color_mapping)
 
-                # BusyStatusChanged(busy=False) fires when SP finishes computing
-                # the layer stack after smart material insertion
-                # much more reliable than a timer — works regardless of machine speed
-                def on_busy_changed(event):
-                    if not event.busy:
-                        sp_event.DISPATCHER.disconnect(
-                            sp_event.BusyStatusChanged, on_busy_changed)
-                        print("[SP] SP idle after smart material insert — exporting")
-                        sp_project.execute_when_not_busy(_do_export)
-
-                sp_event.DISPATCHER.connect_strong(
-                    sp_event.BusyStatusChanged, on_busy_changed)
-            else:
-                # No smart materials — SP is already idle, export immediately
-                sp_project.execute_when_not_busy(_do_export)
+            # Use execute_when_not_busy directly — simpler and more reliable
+            # than BusyStatusChanged which fires for unrelated internal SP operations
+            # Add the project check inside _do_export to catch the case where
+            # SP closes the project between smart material insertion and export
+            sp_project.execute_when_not_busy(_do_export)
 
         def on_bake_end(event):
             sp_event.DISPATCHER.disconnect(sp_event.BakingProcessEnded, on_bake_end)
