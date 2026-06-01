@@ -11,9 +11,10 @@ A Blender add-on that automates the full pipeline from mesh baking to final text
 ## Installation
 
 1. Download `Smart_Material_Bridge.zip`
-2. In Blender go to **Edit → Preferences → Add-ons → Install**
-3. Select the zip and enable **Smart Material Bridge**
-4. Open the **SMB** tab in the N-Panel (press N in the 3D Viewport)
+2. ⚠ make sure the run Blender AS ADMINISTRATOR
+3. In Blender go to **Edit → Preferences → Add-ons → Install**
+4. Select the zip and enable **Smart Material Bridge**
+5. Open the **SMB** tab in the N-Panel (press N in the 3D Viewport)
 
 ## Usage
 
