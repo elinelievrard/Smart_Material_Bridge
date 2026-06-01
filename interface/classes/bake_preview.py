@@ -286,7 +286,6 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
 
         # Validate vertex colors match if enabled
         if scene.smb_use_vertex_colors and len(scene.smb_vertex_colors) > 0:
-            from ..vertex_colors import get_unique_vertex_colors
             mesh_colors = get_unique_vertex_colors(obj)
             detected_colors = {
                 tuple(round(item.color[i], 3) for i in range(3))
