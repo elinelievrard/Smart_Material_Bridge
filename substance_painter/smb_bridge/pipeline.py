@@ -111,10 +111,17 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
         setup_baking(texture_sets, high_path)
 
         def _do_export():
+            # Re-fetch texture sets fresh — the captured list from after_project_ready
+            # can become stale if SP unloads or reloads anything between baking and export
+            current_texture_sets = sp_textureset.all_texture_sets()
+            if not current_texture_sets:
+                print("[SP] No texture sets found at export time — project may have unloaded")
+                return
+
             if texture_out:
                 try:
                     export_textures(
-                        texture_sets, texture_out, projects_folder,
+                        current_texture_sets, texture_out, projects_folder,
                         name, size_log2, export_preset
                     )
                 except Exception as e:
