@@ -86,6 +86,7 @@ def safe_overwrite_bake_folder(bake_folder):
         # Safety check: make sure sub_path is actually a direct child of bake_folder
         # os.path.normpath("C:\Users\eline\MyBakeFolder\chair_1\fbx") == "C:\Users\eline\MyBakeFolder\chair_1"
         # Prevents path traversal like "../../SomeOtherFolder"
+        # os.path.dirname(sub_path) gets the parent folder
         if os.path.normpath(os.path.dirname(sub_path)) != os.path.normpath(bake_folder):
             print(f"[SMB] Safety check failed for {sub_path}, skipping.")
             continue
@@ -106,6 +107,7 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
     bl_label = "Bake Preview"
 
     def execute(self, context):
+        # grabs the current active scene
         scene = context.scene
 
         # ── Validate selection ───────────────────────────────────────────────
@@ -125,6 +127,8 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
 
         from .bake_watcher import OBJECT_OT_bake_watcher
         if (
+                # OBJECT_OT_bake_watcher._sp_process is storing Substance Painter.exe
+                # poll checks if this is still running (None still running, 0 finish succesfull, 1 error)
                 OBJECT_OT_bake_watcher._sp_process is not None and
                 OBJECT_OT_bake_watcher._sp_process.poll() is None
         ):
