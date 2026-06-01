@@ -28,7 +28,8 @@ def on_shelf_ready(event):
     if _pipeline_started:
         return
     _pipeline_started = True
-    _run_pipeline()
+    # Let SP fully settle before starting the pipeline
+    sp_project.execute_when_not_busy(_run_pipeline)
 
 
 def _run_pipeline():
@@ -36,7 +37,7 @@ def _run_pipeline():
     if result is None:
         return
 
-    working_dir, color_mapping, texture_out, projects_folder, size_log2, export_preset, delete_fbx_after = result
+    working_dir, color_mapping, texture_out, projects_folder, size_log2, export_preset, delete_fbx_after, use_low_as_high = result
 
     if not working_dir:
         print("[SP] No working dir in config - nothing to do.")
@@ -64,6 +65,7 @@ def _run_pipeline():
         pairs, working_dir,
         color_mapping, texture_out, projects_folder,
         size_log2, export_preset, delete_fbx_after,
+        use_low_as_high=use_low_as_high,
         index=0
     )
 
@@ -80,7 +82,7 @@ def finish_or_continue(pairs, working_dir, index, process_next_fn, close_sp=True
 
 
 def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder,
-                 size_log2, export_preset, delete_fbx_after, index):
+                 size_log2, export_preset, delete_fbx_after, index, use_low_as_high=False):
     if index >= len(pairs):
         print("[SP] DONE ALL")
         return
@@ -108,7 +110,7 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
             print("[SP] No texture sets found")
             return
 
-        setup_baking(texture_sets, high_path)
+        setup_baking(texture_sets, high_path, use_low_as_high=use_low_as_high)
 
         def _do_export():
             if not sp_project.is_open():
@@ -147,7 +149,8 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
                     p, w, color_mapping,
                     texture_out, projects_folder,
                     size_log2, export_preset,
-                    delete_fbx_after, i
+                    delete_fbx_after, i,
+                    use_low_as_high=use_low_as_high
                 ),
                 close_sp=True
             )
@@ -179,6 +182,8 @@ def process_next(pairs, working_dir, color_mapping, texture_out, projects_folder
 
 
 def hex_to_rgb(hex_str):
+    # "#808080"
+    # (0.5019607843137255, 0.5019607843137255, 0.5019607843137255)
     hex_str = hex_str.lstrip('#')
     r, g, b = (int(hex_str[i:i+2], 16) / 255.0 for i in (0, 2, 4))
     return (r, g, b)
@@ -193,17 +198,21 @@ def apply_smart_materials(texture_sets, color_mapping):
             print("[SP] No ID map available, cannot mask by color")
             return
         sp_textureset.set_active_stack(tset.get_stack())
-        for hex_color, material_name in color_mapping.items():
+        for color_key, material_name in color_mapping.items():
             if material_name == 'NONE':
                 continue
-            apply_single_smart_material(tset, hex_color, material_name, id_map)
+            apply_single_smart_material(tset, color_key, material_name, id_map)
 
 
-def apply_single_smart_material(tset, hex_color, material_name, id_map):
-    print(f"[SP] Applying '{material_name}' for color {hex_color}")
+def apply_single_smart_material(tset, color_key, material_name, id_map):
+    print(f"[SP] Applying '{material_name}' for color key {color_key}")
     try:
-        results = [r for r in sp_resource.search(material_name)
-                   if r.type() == sp_resource.Type.SMART_MATERIAL]
+        # Parse the "r,g,b" float string — these are Blender's raw linear values
+        parts = color_key.split(",")
+        r, g, b = float(parts[0]), float(parts[1]), float(parts[2])
+
+        results = [res for res in sp_resource.search(material_name)
+                   if res.type() == sp_resource.Type.SMART_MATERIAL]
         if not results:
             print(f"[SP] Smart material not found: {material_name}")
             return
@@ -219,17 +228,17 @@ def apply_single_smart_material(tset, hex_color, material_name, id_map):
         )
         color_effect = sp_layerstack.insert_color_selection_effect(mask_position)
 
-        r, g, b = hex_to_rgb(hex_color)
         params = sp_layerstack.ColorSelectionEffectParams(
             id_mask=id_map,
             output_value=1.0,
             hardness=1.0,
-            tolerance=0.5,
+            tolerance=0.15,
             background_color=sp_layerstack.ColorSelectionBackgroundColor.Black,
-            colors=[sp_colormanagement.Color(r, g, b)]
+            # Raw = no color space conversion — matches how SP stores the baked ID map data
+            colors=[sp_colormanagement.Color(r, g, b, sp_colormanagement.GenericColorSpace.Raw)]
         )
         color_effect.set_parameters(params)
-        print(f"[SP] Applied '{material_name}' with mask for {hex_color}")
+        print(f"[SP] Applied '{material_name}' with Raw color ({r:.4f}, {g:.4f}, {b:.4f})")
     except Exception as e:
         import traceback
         traceback.print_exc()

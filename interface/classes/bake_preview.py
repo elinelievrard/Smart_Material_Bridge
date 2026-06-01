@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import stat
+import time
 
 import bpy
 from ..mesh_pairs import find_mesh_pairs, export_pair
@@ -10,6 +11,7 @@ from ..vertex_colors import get_unique_vertex_colors, clear_materials
 from ..ui import RESOLUTION_TO_LOG2
 from ...handle_sp_files import install_sp_files
 from ...config import SP_STARTUP, SP_EXE
+
 
 
 # ─── HELPERS ────────────────────────────────────────────────────────────────
@@ -45,6 +47,31 @@ def _force_remove(func, path, exc_info):
     # os.chmod with S_IWRITE forces the write bit on before retrying the delete
     os.chmod(path, stat.S_IWRITE)
     func(path)
+
+def ensure_vertex_color_layer(obj):
+    """
+    Checks whether the mesh has any real vertex color data.
+    If not, injects a temporary all-white FLOAT_COLOR layer so SP
+    always gets valid vertex color data for ID map baking.
+    Returns the injected layer name, or None if one already existed.
+    """
+    mesh = obj.data
+    for attr in mesh.color_attributes:
+        if attr.data_type in ('BYTE_COLOR', 'FLOAT_COLOR'):
+            print(f"[SMB] Mesh already has color layer: {attr.name}")
+            return None  # already has one, nothing injected
+
+    print("[SMB] No vertex color data found — injecting fallback white layer")
+    layer = mesh.color_attributes.new(
+        name="SMB_fallback",
+        type='FLOAT_COLOR',
+        domain='CORNER'
+    )
+    # Set every loop's color to white (1, 1, 1, 1)
+    for item in layer.data:
+        item.color = (1.0, 1.0, 1.0, 1.0)
+
+    return layer.name  # caller uses this to remove it after export
 
 def safe_overwrite_bake_folder(bake_folder):
     # Deletes only fbx/, textures/, projects/ inside the given bake folder
@@ -94,6 +121,14 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
         # obj.name = "Cube"       <- fails, no _low suffix
         if not obj.name.endswith("_low"):
             self.report({'ERROR'}, f"'{obj.name}' is not a _low mesh — select a _low object first")
+            return {'CANCELLED'}
+
+        from .bake_watcher import OBJECT_OT_bake_watcher
+        if (
+                OBJECT_OT_bake_watcher._sp_process is not None and
+                OBJECT_OT_bake_watcher._sp_process.poll() is None
+        ):
+            self.report({'ERROR'}, "Substance Painter is still running — wait for it to finish")
             return {'CANCELLED'}
 
         # SP_EXE     = "C:\Program Files\Adobe\Adobe Substance 3D Painter\Adobe Substance 3D Painter.exe"
@@ -210,6 +245,20 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
         if export_project:
             os.makedirs(projects_folder, exist_ok=True)
 
+        if scene.smb_save_blend:
+            blend_folder = os.path.join(bake_folder, "blender")
+            os.makedirs(blend_folder, exist_ok=True)
+            current_blend = bpy.data.filepath
+            if current_blend:
+                blend_name = os.path.splitext(os.path.basename(current_blend))[0] + ".blend"
+                bpy.ops.wm.save_as_mainfile(
+                    filepath=os.path.join(blend_folder, blend_name),
+                    copy=True  # copy=True saves a copy without changing the current file path
+                )
+                print(f"[SMB] Saved blend copy to: {blend_folder}")
+            else:
+                self.report({'WARNING'}, "Blend file has never been saved — skipping blend copy")
+
         # ── Find and filter mesh pairs ───────────────────────────────────────
         # find_mesh_pairs scans bpy.data.objects for _low/_high name pairs
         # returns e.g. [(<Object "Cube_low">, <Object "Cube_high">),
@@ -249,9 +298,18 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
 
         # Writes Chair_low.fbx and Chair_high.fbx into fbx_folder
         # If use_low_as_high, copies Chair_low.fbx -> Chair_high.fbx instead of re-exporting
+        # Ensure every low mesh has vertex color data before export
+        # SP needs it to bake the ID map — if there's none we inject a
+        # temporary all-white layer and remove it after the FBX is written
         for low, high in pairs:
+            injected_layer = ensure_vertex_color_layer(low)
             print(f"Exporting pair: {low.name} <- {high.name}")
             export_pair(low, high, fbx_folder)
+            if injected_layer:
+                low.data.color_attributes.remove(
+                    low.data.color_attributes[injected_layer]
+                )
+                print(f"[SMB] Removed temporary color layer from {low.name}")
 
         # ── Build color -> smart material mapping ────────────────────────────
         color_mapping = {}
@@ -261,27 +319,55 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
         # nothing assigned:   {}
 
         if scene.smb_use_vertex_colors:
-            # Each item in smb_vertex_colors has .hex_name and .smart_material
-            # hex_name = "#FF0000",  smart_material = "Metal_Rusty"  (or "NONE" if unset)
-            for item in scene.smb_vertex_colors:
-                if item.smart_material and item.smart_material != 'NONE':
-                    color_mapping[item.hex_name] = item.smart_material
+            low_obj = pairs[0][0]
+            mesh = low_obj.data
+
+            # Find the color layer
+            color_layer = None
+            for attr in mesh.color_attributes:
+                if attr.data_type in ('BYTE_COLOR', 'FLOAT_COLOR'):
+                    color_layer = attr
+                    break
+
+            if color_layer:
+                # Build a map from rounded color -> representative raw color from actual mesh data
+                rounded_to_raw = {}
+                precision = 3
+
+                if color_layer.domain == 'CORNER':
+                    for loop in mesh.loops:
+                        c = color_layer.data[loop.index].color
+                        key = tuple(round(x, precision) for x in c[:3])
+                        if key not in rounded_to_raw:
+                            rounded_to_raw[key] = (c[0], c[1], c[2])
+                elif color_layer.domain == 'POINT':
+                    for i in range(len(mesh.vertices)):
+                        c = color_layer.data[i].color
+                        key = tuple(round(x, precision) for x in c[:3])
+                        if key not in rounded_to_raw:
+                            rounded_to_raw[key] = (c[0], c[1], c[2])
+
+                # Now match each UI item to its raw mesh color via the rounded key
+                for item in scene.smb_vertex_colors:
+                    if item.smart_material and item.smart_material != 'NONE':
+                        rounded_key = tuple(round(item.color[i], precision) for i in range(3))
+                        raw = rounded_to_raw.get(rounded_key)
+                        if raw:
+                            r, g, b = raw[0], raw[1], raw[2]
+                        else:
+                            # Fallback: use item.color directly
+                            r, g, b = item.color[0], item.color[1], item.color[2]
+                        key = f"{r:.6f},{g:.6f},{b:.6f}"
+                        color_mapping[key] = item.smart_material
+                        print(f"[SMB] Color key for {item.hex_name}: {key}")
         else:
-            # Single material mode: same smart material goes on every color region boolean
             single_mat = scene.smb_single_smart_material
-            # single_mat = "Steel"  or  "NONE"  if nothing selected
             if single_mat and single_mat != 'NONE':
                 colors = get_unique_vertex_colors(pairs[0][0])
                 for color in colors:
-                    # color = (1.0, 0.0, 0.0)
-                    # int(1.0 * 255) = 255,  int(0.0 * 255) = 0
-                    # hex_name = "#FF0000"
-                    hex_name = '#{:02X}{:02X}{:02X}'.format(
-                        int(color[0] * 255),
-                        int(color[1] * 255),
-                        int(color[2] * 255)
-                    )
-                    color_mapping[hex_name] = single_mat
+                    r, g, b = color[0], color[1], color[2]
+                    key = f"{r:.6f},{g:.6f},{b:.6f}"
+                    color_mapping[key] = single_mat
 
         print(f"[SMB] Color mapping: {color_mapping}")
 
@@ -324,11 +410,19 @@ class OBJECT_OT_bake_preview(bpy.types.Operator):
                 # True  -> SP deletes the fbx/ folder after baking (user unchecked Export FBX)
                 # False -> fbx/ files are kept permanently
                 "delete_fbx_after": not export_fbx,
+
+                "use_low_as_high": use_low_as_high,
             }, file, indent=4)
 
         # ── Launch Substance Painter ─────────────────────────────────────────
         # Copies smb_bridge_startup.py and smb_bridge/ into SP's startup folder
         # so SP auto-runs the pipeline script when it opens
+        scene.smb_last_bake_time = str(time.time())
+        scene.smb_last_baked_material = ""
+        scene.smb_last_bake_resolution = resolution
+        scene.smb_last_bake_texture_count = 0
+        scene.smb_last_bake_folder = str(textures_folder)
+
         install_sp_files()
 
         # Popen launches SP as a separate process and returns immediately (non-blocking)

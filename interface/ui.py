@@ -28,7 +28,9 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
         layout = self.layout
         scene = context.scene
 
-        layout.prop(scene, "bake_base_folder", text="Bake Folder")
+        row = layout.row(align=True)
+        row.prop(scene, "bake_base_folder", text="Bake Folder")
+        row.operator("smb.reset_bake_folder", text="", icon='FILE_REFRESH')
         layout.prop(scene, "smb_bake_folder_name", text="Bake Name")
 
         raw_name = scene.smb_bake_folder_name.strip()
@@ -53,6 +55,7 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
 
         col = layout.column(align=True)
         col.prop(scene, "smb_export_fbx")
+        col.prop(scene, "smb_save_blend")
 
         row = col.row(align=True)
         row.enabled = scene.smb_export_fbx
@@ -152,6 +155,16 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
 
         # Check active object is a valid _low mesh
         obj = context.object
+        # Mesh pair validator
+        if obj and obj.type == 'MESH' and obj.name.endswith("_low"):
+            if not scene.smb_use_low_as_high:
+                base_name = obj.name[:-4]
+                high_obj = bpy.data.objects.get(base_name + "_high")
+                if not high_obj or high_obj.type != 'MESH':
+                    row = layout.row()
+                    row.alert = True
+                    row.label(text=f"No '{base_name}_high' found in scene", icon='ERROR')
+
         has_valid_selection = (
                 obj is not None and
                 obj.type == 'MESH' and
@@ -163,6 +176,42 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
             bake_error = "Select a _low mesh to bake."
 
         layout.separator()
+
+        row = layout.row()
+        row.enabled = can_bake
+
+        # Block baking if a previous SP process is still running
+        from .classes.bake_watcher import OBJECT_OT_bake_watcher
+        import time
+
+        # Check if SP is still running
+        sp_still_running = (
+                OBJECT_OT_bake_watcher._sp_process is not None and
+                OBJECT_OT_bake_watcher._sp_process.poll() is None
+        )
+
+        # Check 10-second cooldown after bake completes
+        bake_cooldown_active = False
+        if OBJECT_OT_bake_watcher._last_bake_completed_time:
+            elapsed = time.time() - OBJECT_OT_bake_watcher._last_bake_completed_time
+            bake_cooldown_active = elapsed < 20
+
+        # Check 10-second startup breathing room
+        startup_cooldown_active = False
+        from .. import _addon_startup_time
+        if _addon_startup_time:
+            elapsed = time.time() - _addon_startup_time
+            startup_cooldown_active = elapsed < 10
+
+        if sp_still_running:
+            can_bake = False
+            bake_error = "Substance Painter is still running."
+        elif bake_cooldown_active:
+            can_bake = False
+            bake_error = "Bake in progress, please wait..."
+        elif startup_cooldown_active:
+            can_bake = False
+            bake_error = "Addon initializing, please wait..."
 
         row = layout.row()
         row.enabled = can_bake
@@ -200,6 +249,7 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
                     row = box.row(align=True)
                     row.prop(item, "color", text="")
                     row.label(text=item.hex_name)
+                    row.operator("smb.pick_vertex_paint_color", text="", icon='EYEDROPPER').hex_name = item.hex_name
                     box.prop(item, "smart_material", text="Material")
 
                     r, g, b = item.color[0], item.color[1], item.color[2]
@@ -212,3 +262,67 @@ class OBJECT_PT_bake_panel(bpy.types.Panel):
                 layout.label(text="No colors detected yet", icon='INFO')
         else:
             layout.prop(scene, "smb_single_smart_material", text="Smart Material")
+
+        # ── Last bake summary ────────────────────────────────────────────
+        if scene.smb_last_baked_material and scene.smb_last_bake_time:
+            layout.separator()
+
+            import time
+
+            def _time_ago(ts_str):
+                try:
+                    elapsed = time.time() - float(ts_str)
+                    if elapsed < 60:
+                        return f"{int(elapsed)}s ago"
+                    elif elapsed < 3600:
+                        return f"{int(elapsed // 60)}m ago"
+                    else:
+                        return f"{int(elapsed // 3600)}h ago"
+                except:
+                    return ""
+
+            box = layout.box()
+            row = box.row()
+            row.prop(
+                scene, "smb_bake_summary_expanded",
+                icon='TRIA_DOWN' if scene.smb_bake_summary_expanded else 'TRIA_RIGHT',
+                text="Last Bake",
+                emboss=False
+            )
+
+            if scene.smb_bake_summary_expanded:
+                time_ago = _time_ago(scene.smb_last_bake_time)
+                res = scene.smb_last_bake_resolution
+                bake_folder = scene.smb_last_bake_folder.strip()
+
+                col = box.column(align=True)
+                col.label(text=f"Material:   {scene.smb_last_baked_material}", icon='MATERIAL')
+                col.label(text=f"Resolution: {res}px", icon='IMAGE_DATA')
+                if time_ago:
+                    col.label(text=f"Baked:      {time_ago}", icon='SORTTIME')
+
+                # Texture list
+                mat = bpy.data.materials.get(scene.smb_last_baked_material)
+                if mat and mat.use_nodes:
+                    tex_nodes = [
+                        n for n in mat.node_tree.nodes
+                        if n.type == 'TEX_IMAGE' and n.image
+                    ]
+                    if tex_nodes:
+                        box.separator()
+                        tex_col = box.column(align=True)
+                        tex_col.label(text=f"Textures ({len(tex_nodes)}):", icon='TEXTURE')
+                        for node in tex_nodes:
+                            tex_col.label(text=f"{node.image.name}")
+
+                # Folder path + open button
+                if bake_folder and os.path.exists(os.path.dirname(bake_folder)):
+                    box.separator()
+                    folder_col = box.column(align=True)
+                    # Show the bake root folder (one level up from textures/)
+                    display_folder = os.path.dirname(bake_folder)
+                    folder_col.label(text=display_folder, icon='FILE_FOLDER')
+                    folder_col.operator(
+                        "smb.open_bake_folder",
+                        text="Open in Explorer",
+                    )

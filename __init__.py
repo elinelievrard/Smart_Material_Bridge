@@ -1,4 +1,7 @@
 import os
+import time
+
+_addon_startup_time = None  # Track when addon loads
 
 bl_info = {
     "name": "Smart Material Bridge",
@@ -11,13 +14,14 @@ try:
     from .interface.ui import OBJECT_PT_bake_panel, RESOLUTION_ITEMS
     from .interface.classes.bake_preview import OBJECT_OT_bake_preview
     from .interface.classes.bake_watcher import OBJECT_OT_bake_watcher
-    from .interface.classes.refresh_overwrite_folder import SMB_OT_refresh_overwrite_folder
+    from .interface.classes.refresh_overwrite_folder import SMB_OT_refresh_overwrite_folder, SMB_OT_reset_bake_folder, SMB_OT_open_bake_folder
     from .interface.functions.get_smart_materials import get_export_preset_items, get_smart_material_items
     from .interface.vertex_colors import (
         SMB_VertexColorItem,
         OBJECT_OT_detect_vertex_colors,
         SMB_OT_show_vertex_colors,
         SMB_OT_clear_vertex_color_materials,
+        SMB_OT_pick_vertex_paint_color
     )
 
 except Exception as e:
@@ -34,9 +38,15 @@ classes = [
     SMB_OT_refresh_overwrite_folder,
     SMB_OT_show_vertex_colors,
     SMB_OT_clear_vertex_color_materials,
+    SMB_OT_pick_vertex_paint_color,
+    SMB_OT_reset_bake_folder,
+    SMB_OT_open_bake_folder,
 ]
 
 def register():
+    global _addon_startup_time
+    _addon_startup_time = time.time()
+
     for cls in classes:
         bpy.utils.register_class(cls)
 
@@ -104,6 +114,31 @@ def register():
         name="Last Baked Material",
         default=""
     )
+    bpy.types.Scene.smb_save_blend = bpy.props.BoolProperty(
+        name="Save Blender File",
+        description="Save a copy of the current .blend file into the bake folder under a Blender/ subfolder",
+        default=False
+    )
+    bpy.types.Scene.smb_last_bake_time = bpy.props.StringProperty(
+        name="Last Bake Time",
+        default=""
+    )
+    bpy.types.Scene.smb_last_bake_resolution = bpy.props.StringProperty(
+        name="Last Bake Resolution",
+        default=""
+    )
+    bpy.types.Scene.smb_last_bake_texture_count = bpy.props.IntProperty(
+        name="Last Bake Texture Count",
+        default=0
+    )
+    bpy.types.Scene.smb_bake_summary_expanded = bpy.props.BoolProperty(
+        name="Bake Summary Expanded",
+        default=True
+    )
+    bpy.types.Scene.smb_last_bake_folder = bpy.props.StringProperty(
+        name="Last Bake Folder",
+        default=""
+    )
 
 def unregister():
     for cls in classes:
@@ -123,3 +158,9 @@ def unregister():
     del bpy.types.Scene.smb_resolution
     del bpy.types.Scene.smb_vertex_colors
     del bpy.types.Scene.smb_last_baked_material
+    del bpy.types.Scene.smb_save_blend
+    del bpy.types.Scene.smb_last_bake_time
+    del bpy.types.Scene.smb_last_bake_resolution
+    del bpy.types.Scene.smb_last_bake_texture_count
+    del bpy.types.Scene.smb_bake_summary_expanded
+    del bpy.types.Scene.smb_last_bake_folder

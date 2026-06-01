@@ -19,6 +19,7 @@
 # Blender uses a "modal operator" so this runs without freezing the UI.
 # Instead of looping, it wakes up on timer events while the UI stays responsive.
 # =============================================================================
+import time
 
 import bpy
 import os
@@ -49,6 +50,8 @@ def get_unique_material_name(base="SMB_Material"):
 
 
 class OBJECT_OT_bake_watcher(bpy.types.Operator):
+    _last_bake_completed_time = None
+
     bl_idname = "object.bake_watcher"
     bl_label = "Bake Watcher"
 
@@ -161,6 +164,7 @@ class OBJECT_OT_bake_watcher(bpy.types.Operator):
                 context.window_manager.event_timer_remove(self._timer)
                 self._cleanup_sp_files()
                 OBJECT_OT_bake_watcher._sp_process = None
+                OBJECT_OT_bake_watcher._last_bake_completed_time = time.time()
                 self.report({'WARNING'}, "SMB: SP closed without exporting textures")
                 return {'FINISHED'}
 
@@ -294,15 +298,18 @@ class OBJECT_OT_bake_watcher(bpy.types.Operator):
 
         if matched_any:
             print(f"[Watcher] Applied material '{mat_name}' to {self.low_mesh_name}")
-            # Store the material name on the scene so other parts of the addon can reference it
-            # context.scene.smb_last_baked_material = "SMB_Material_1"
             context.scene.smb_last_baked_material = mat_name
+            context.scene.smb_last_bake_texture_count = len([
+                n for n in mat.node_tree.nodes if n.type == 'TEX_IMAGE'
+            ])
             self.report({'INFO'}, f"SMB: Material '{mat_name}' applied!")
         else:
             # No standard channels matched at all — likely a fully packed/custom preset
             # Textures are still loaded in the shader editor, just not wired up
             print(f"[Watcher] No standard channels found — textures loaded as orphan nodes")
             self.report({'INFO'}, f"SMB: Textures loaded (packed preset — connect manually)")
+
+        OBJECT_OT_bake_watcher._last_bake_completed_time = time.time()
 
     # ── Invoke / Cancel ──────────────────────────────────────────────────────
 

@@ -37,19 +37,34 @@ def get_unique_vertex_colors(obj, color_layer_name=None, precision=3):
     if color_layer.domain == 'CORNER':
         for loop in mesh.loops:
             item = color_layer.data[loop.index]
-            color = item.color if color_layer.data_type == 'BYTE_COLOR' else item.vector
+            color = item.color
             rounded = tuple(round(c, precision) for c in color[:3])
             unique_colors.add(rounded)
 
     elif color_layer.domain == 'POINT':
         for i in range(len(mesh.vertices)):
             item = color_layer.data[i]
-            color = item.color if color_layer.data_type == 'BYTE_COLOR' else item.vector
+            color = item.color
             rounded = tuple(round(c, precision) for c in color[:3])
             unique_colors.add(rounded)
 
     return unique_colors
 
+class SMB_OT_pick_vertex_paint_color(bpy.types.Operator):
+    bl_idname = "smb.pick_vertex_paint_color"
+    bl_label = "Use Vertex Paint Color"
+    bl_description = "Set this slot's color to the active vertex paint brush color"
+
+    hex_name: bpy.props.StringProperty()
+
+    def execute(self, context):
+        for item in context.scene.smb_vertex_colors:
+            if item.hex_name == self.hex_name:
+                context.tool_settings.vertex_paint.brush.color = (
+                    item.color[0], item.color[1], item.color[2]
+                )
+                break
+        return {'FINISHED'}
 
 
 class SMB_VertexColorItem(bpy.types.PropertyGroup):
@@ -69,6 +84,7 @@ class SMB_VertexColorItem(bpy.types.PropertyGroup):
 class OBJECT_OT_detect_vertex_colors(bpy.types.Operator):
     bl_idname = "object.detect_vertex_colors"
     bl_label = "Detect Vertex Colors"
+    bl_description = "Detect the vertex colors assigned to the mesh"
 
     def execute(self, context):
         obj = context.object
@@ -82,18 +98,30 @@ class OBJECT_OT_detect_vertex_colors(bpy.types.Operator):
             self.report({'WARNING'}, "No vertex colors found on this object")
             return {'CANCELLED'}
 
-        # Clear existing stored colors
+        # Save existing assignments keyed by float string (matches bake_preview color_mapping format)
+        previous_assignments = {}
+        for item in context.scene.smb_vertex_colors:
+            if item.smart_material and item.smart_material != 'NONE':
+                r, g, b = item.color[0], item.color[1], item.color[2]
+                float_key = f"{r:.6f},{g:.6f},{b:.6f}"
+                previous_assignments[float_key] = item.smart_material
+
         context.scene.smb_vertex_colors.clear()
 
-        # Store each unique color
         for color in colors:
             item = context.scene.smb_vertex_colors.add()
             item.color = color
+            # hex_name is still used for display only in the UI
             item.hex_name = '#{:02X}{:02X}{:02X}'.format(
                 int(color[0] * 255),
                 int(color[1] * 255),
                 int(color[2] * 255)
             )
+            # Restore assignment using float key
+            r, g, b = color[0], color[1], color[2]
+            float_key = f"{r:.6f},{g:.6f},{b:.6f}"
+            if float_key in previous_assignments:
+                item.smart_material = previous_assignments[float_key]
 
         self.report({'INFO'}, f"Found {len(colors)} vertex colors")
         return {'FINISHED'}
@@ -181,7 +209,7 @@ class SMB_OT_show_vertex_colors(bpy.types.Operator):
             loop_hex = {}
             for loop in mesh.loops:
                 item = color_layer.data[loop.index]
-                color = item.color if color_layer.data_type == 'BYTE_COLOR' else item.vector
+                color = item.color
                 loop_hex[loop.index] = color_to_hex(color, precision)
 
             for poly in mesh.polygons:
@@ -202,7 +230,7 @@ class SMB_OT_show_vertex_colors(bpy.types.Operator):
                 counts = {}
                 for vert_idx in poly.vertices:
                     item = color_layer.data[vert_idx]
-                    color = item.color if color_layer.data_type == 'BYTE_COLOR' else item.vector
+                    color = item.color
                     h = color_to_hex(color, precision)
                     counts[h] = counts.get(h, 0) + 1
                 dominant = max(counts, key=counts.get)

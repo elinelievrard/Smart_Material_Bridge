@@ -27,6 +27,7 @@ def load_working_dir():
         size_log2        = config.get("size_log2", 11)
         export_preset    = config.get("export_preset", "")
         delete_fbx_after = config.get("delete_fbx_after", False)
+        use_low_as_high = config.get("use_low_as_high", False)
 
         if not working_dir:
             print("[SP] bake_folder key missing from config")
@@ -35,7 +36,7 @@ def load_working_dir():
         print(f"[SP] Working dir: {working_dir}")
         print(f"[SP] Texture out: {texture_out}")
         print(f"[SP] Color mapping: {color_mapping}")
-        return working_dir, color_mapping, texture_out, projects_folder, size_log2, export_preset, delete_fbx_after
+        return working_dir, color_mapping, texture_out, projects_folder, size_log2, export_preset, delete_fbx_after, use_low_as_high
 
     except Exception as e:
         print(f"[SP] Failed to load config: {e}")

@@ -36,3 +36,29 @@ class SMB_OT_refresh_overwrite_folder(bpy.types.Operator):
         scene.smb_overwrite_folder = latest
         self.report({'INFO'}, f"Set to: {os.path.basename(latest)}")
         return {'FINISHED'}
+
+class SMB_OT_reset_bake_folder(bpy.types.Operator):
+    bl_idname = "smb.reset_bake_folder"
+    bl_label = "Reset Bake Folder"
+    bl_description = "Reset to default bake folder"
+
+    def execute(self, context):
+        import os
+        context.scene.bake_base_folder = os.path.join(os.path.expanduser("~"), "MyBakeFolder")
+        return {'FINISHED'}
+
+class SMB_OT_open_bake_folder(bpy.types.Operator):
+    bl_idname = "smb.open_bake_folder"
+    bl_label = "Open Bake Folder"
+    bl_description = "Open the last bake folder in Windows Explorer"
+
+    def execute(self, context):
+        import os
+        folder = context.scene.smb_last_bake_folder.strip()
+        # Open the parent (bake root), not the textures/ subfolder
+        display_folder = os.path.dirname(folder) if folder else ""
+        if display_folder and os.path.exists(display_folder):
+            os.startfile(display_folder)
+        else:
+            self.report({'WARNING'}, "Folder no longer exists")
+        return {'FINISHED'}
