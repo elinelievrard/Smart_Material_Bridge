@@ -4,6 +4,7 @@ A Blender add-on that automates the full pipeline from mesh baking to final text
 
 ## DEMO
 Click the photo to watch the demo
+
 [![Watch the DEMO](https://img.youtube.com/vi/ijKSBREekT8/maxresdefault.jpg)](https://www.youtube.com/watch?v=ijKSBREekT8)
 ## Requirements
 
